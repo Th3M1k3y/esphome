@@ -1,0 +1,101 @@
+substitutions:
+  device_name: sonoff-pow-r1
+  friendly_name: Sonoff POW R1
+  device_description: "Measure energy consumption"
+  led_status: GPIO15
+  relay_pin: GPIO12
+
+esphome:
+  name: '${device_name}'
+  comment: '${device_description}'
+  platform: ESP8266
+  board: esp01_1m
+
+wifi:
+  ssid: !secret iot_ssid
+  password: !secret iot_pass
+
+  ap:
+    ssid: '${device_name}'
+    password: !secret fallback_password
+
+captive_portal:
+
+# Enable logging
+logger:
+
+api:
+  password: !secret esphome_api_password
+
+ota:
+  safe_mode: true
+  reboot_timeout: 10min
+  num_attempts: 5
+
+web_server:
+  port: 80
+  auth:
+    username: !secret esphome_web_username
+    password: !secret esphome_web_password
+
+# Status LED for connection
+status_led:
+  pin:
+    number: ${led_status}
+    inverted: true
+
+# Sensors for ESP version and WIFI information
+text_sensor:
+  - platform: version
+    hide_timestamp: true
+    name: "${friendly_name} - ESPHome Version"
+  - platform: wifi_info
+    ip_address:
+      name: "${friendly_name} - IP Address"
+      icon: mdi:wifi
+    ssid:
+      name: "${friendly_name} - Connected SSID"
+      icon: mdi:wifi-strength-2
+
+sensor:
+  - platform: hlw8012
+    sel_pin: GPIO5
+    cf_pin: GPIO14
+    cf1_pin: GPIO13
+    current_resistor: 0.000875
+    voltage_divider: 2520 #2350
+    current:
+      name: '${friendly_name} - Current'
+      accuracy_decimals: 3
+      filters:
+        - throttle_average: 60s
+    voltage:
+      name: '${friendly_name} - Voltage'
+      accuracy_decimals: 0
+      filters:
+        - throttle_average: 60s
+    power:
+      name: '${friendly_name} - Power'
+      accuracy_decimals: 1
+      filters:
+        - sliding_window_moving_average:
+            window_size: 12
+            send_every: 1
+        - throttle: 5s
+    energy:
+      name: '${friendly_name} - Energy'
+      accuracy_decimals: 3
+      state_class: total_increasing
+      device_class: energy
+      unit_of_measurement: 'kWh'
+      filters:
+        - throttle: 60s
+        - multiply: 0.001
+    update_interval: 5s
+    
+switch:
+  - platform: gpio
+    name: '${friendly_name} - Relay'
+    id: relay
+    pin: ${relay_pin}
+    restore_mode: RESTORE_DEFAULT_OFF
