@@ -1,0 +1,108 @@
+substitutions:
+  device_name: sonoff-4chpro
+  friendly_name: Sonoff 4CH Pro
+  device_description: "Sonoff 4CH Pro"
+  led_status: GPIO13
+  
+esphome:
+  name: '${device_name}'
+  comment: '${device_description}'
+  platform: ESP8266
+  board: esp01_1m
+
+# Enable Home Assistant API
+api:
+  password: !secret esphome_api_password
+  
+logger:
+  level: DEBUG
+
+ota:
+  safe_mode: true
+  reboot_timeout: 10min
+  num_attempts: 5
+  
+web_server:
+  port: 80
+  auth:
+    username: !secret esphome_web_username
+    password: !secret esphome_web_password
+
+wifi:
+  ssid: !secret iot_ssid
+  password: !secret iot_pass
+
+  ap:
+    ssid: '${device_name}'
+    password: !secret fallback_password
+
+# Status LED for connection
+status_led:
+  pin:
+    number: ${led_status}
+    inverted: false
+
+# Sensors for ESP version and WIFI information
+text_sensor:
+  - platform: version
+    hide_timestamp: true
+    name: "${friendly_name} - ESPHome Version"
+  - platform: wifi_info
+    ip_address:
+      name: "${friendly_name} - IP Address"
+      icon: mdi:wifi
+    ssid:
+      name: "${friendly_name} - Connected SSID"
+      icon: mdi:wifi-strength-2
+      
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO0
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "${friendly_name} - Button 1"
+    on_press:
+      - switch.toggle: relay1
+  - platform: gpio
+    pin:
+      number: GPIO9
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "${friendly_name} - Button 2"
+    on_press:
+      - switch.toggle: relay2
+  - platform: gpio
+    pin:
+      number: GPIO10
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "${friendly_name} - Button 3"
+    on_press:
+      - switch.toggle: relay3
+  - platform: gpio
+    pin:
+      number: GPIO14
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "${friendly_name} - Button 4"
+    on_press:
+      - switch.toggle: relay4
+    
+switch:
+  - platform: gpio
+    name: "${friendly_name} - Relay 1"
+    pin: GPIO12
+    id: relay1
+  - platform: gpio
+    name: "${friendly_name} - Relay 2"
+    pin: GPIO5
+    id: relay2
+  - platform: gpio
+    name: "${friendly_name} - Relay 3"
+    pin: GPIO4
+    id: relay3
+  - platform: gpio
+    name: "${friendly_name} - Relay 4"
+    pin: GPIO15
+    id: relay4
