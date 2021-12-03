@@ -1,0 +1,161 @@
+substitutions:
+  # General variables
+  device_name: house-consumption
+  friendly_name: 'House meter'
+  device_description: "Measure energy consumption"
+  led_status: GPIO2 # LED output for ESPHome status
+  
+  # Electricity
+  power_pulse: GPIO16 # Pin registering the inputs from the photodiode board
+  power_led_pulse: GPIO25 # LED output acknowledging pulse received from photodiode
+  power_pulse_rate: '10000' # imp/kWh rate
+  power_watts_interval: 5s # Limit updates for current wattage used to not flood the database
+  power_total_interval: 60s # Limit updates total energy to not flood the database
+  
+  # Gas
+  gas_pulse: GPIO17 # Pin registering the inputs from the reed switch on the gas meter
+  gas_led_pulse: GPIO18 # LED output acknowledging pulse received from reed switch
+  gas_pulse_rate: '0.001' # m3 consumed for each pulse
+  gas_total_interval: 60s # Limit updates to not flood the database
+  
+  
+
+esphome:
+  name: '${device_name}'
+  comment: '${device_description}'
+  platform: ESP32
+  board: nodemcu-32s
+
+wifi:
+  ssid: !secret iot_ssid
+  password: !secret iot_pass
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: '${device_name}'
+    password: !secret fallback_password
+
+captive_portal:
+
+# Enable logging
+logger:
+  level: WARN
+
+# Enable Home Assistant API
+api:
+  password: !secret esphome_api_password
+
+ota:
+  safe_mode: true
+  reboot_timeout: 10min
+  num_attempts: 5
+
+web_server:
+  port: 80
+  auth:
+    username: !secret esphome_web_username
+    password: !secret esphome_web_password
+
+output:
+  - platform: gpio # Output for power meter pulse detected
+    pin: ${power_led_pulse}
+    id: output_led_pulse
+    
+  - platform: gpio # Output for gas meter pulse detected
+    pin: ${gas_led_pulse}
+    id: output_gas_led_pulse
+
+light:
+  - platform: binary
+    internal: true
+    id: led_pulse
+    name: Pulse LED
+    output: output_led_pulse
+    
+  - platform: binary
+    internal: true
+    id: gas_led_pulse
+    name: Gas pulse LED
+    output: output_gas_led_pulse
+
+status_led:
+  pin:
+    number: ${led_status}
+    inverted: false
+
+# Sensors for ESP version and WIFI information
+text_sensor:
+  - platform: version
+    hide_timestamp: true
+    name: "${friendly_name} - ESPHome Version"
+  - platform: wifi_info
+    ip_address:
+      name: "${friendly_name} - IP Address"
+      icon: mdi:wifi
+    ssid:
+      name: "${friendly_name} - Connected SSID"
+      icon: mdi:wifi-strength-2
+
+globals:
+  - id: gas_total
+    type: int
+    restore_value: no
+    initial_value: '0'
+      
+binary_sensor:
+  - platform: gpio
+    name: "Pulse from gas meter reed switch"
+    internal: true
+    pin:
+      number: ${gas_pulse}
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on: 1s
+    on_press:
+      then:
+        - lambda: !lambda |-
+              id(gas_total)++;
+              id(total_gas).publish_state(id(gas_total) * ${gas_pulse_rate});
+
+sensor:
+  - platform: template
+    name: "${friendly_name} - Total gas"
+    id: total_gas
+    unit_of_measurement: 'm3'
+    icon: mdi:water-boiler
+    accuracy_decimals: 3
+    device_class: gas
+    filters:
+      - throttle: ${gas_total_interval}
+      - multiply: ${gas_pulse_rate}
+    lambda: return id(gas_total);
+
+  - platform: pulse_meter
+    name: '${friendly_name} - Power consumption'
+    unit_of_measurement: 'W'
+    state_class: measurement
+    device_class: power
+    icon: mdi:flash-outline
+    accuracy_decimals: 0
+    internal_filter: 25ms # Pulse must be at least 25ms long for it to trigger
+    pin: ${power_pulse}
+    on_value:
+      then:
+        - light.turn_on:
+            id: led_pulse
+            flash_length: 20ms
+    filters:
+      - throttle_average: ${power_watts_interval}
+      - lambda: return x * ((60.0 / ${power_pulse_rate}) * 1000.0);
+    total:
+      name: '${friendly_name} - Total energy'
+      unit_of_measurement: 'kWh'
+      icon: mdi:home-lightning-bolt-outline
+      state_class: total_increasing
+      device_class: energy
+      accuracy_decimals: 3
+      filters:
+        - throttle: ${power_total_interval}
+        - lambda: return x * (1.0 / ${power_pulse_rate});
+        
