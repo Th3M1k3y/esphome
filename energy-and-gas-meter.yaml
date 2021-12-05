@@ -6,18 +6,18 @@ substitutions:
   led_status: GPIO2 # LED output for ESPHome status
   
   # Electricity
-  power_pulse: GPIO16 # Pin registering the inputs from the photodiode board
-  power_led_pulse: GPIO25 # LED output acknowledging pulse received from photodiode
+  power_pulse: GPIO17 # Pin registering the inputs from the photodiode board
+  power_led_pulse: GPIO18 # LED output acknowledging pulse received from photodiode
   power_pulse_rate: '10000' # imp/kWh rate
   power_watts_interval: 5s # Limit updates for current wattage used to not flood the database
   power_total_interval: 60s # Limit updates total energy to not flood the database
   
   # Gas
-  gas_pulse: GPIO17 # Pin registering the inputs from the reed switch on the gas meter
+  gas_pulse: GPIO16 # Pin registering the inputs from the reed switch on the gas meter
+  gas_tamper: GPIO4 # Pin for tamper detection
   gas_led_pulse: GPIO18 # LED output acknowledging pulse received from reed switch
-  gas_pulse_rate: '0.001' # m3 consumed for each pulse
+  gas_pulse_rate: '0.01' # m3 consumed for each pulse
   gas_total_interval: 60s # Limit updates to not flood the database
-  
   
 
 esphome:
@@ -111,21 +111,31 @@ binary_sensor:
       mode: INPUT_PULLUP
       inverted: true
     filters:
-      - delayed_on: 1s
+      - delayed_on_off: 5s
     on_press:
       then:
         - lambda: !lambda |-
               id(gas_total)++;
               id(total_gas).publish_state(id(gas_total) * ${gas_pulse_rate});
+              
+  - platform: gpio
+    name: "${friendly_name} - Gas tamper switch"
+    pin:
+      number: ${gas_tamper}
+      mode: INPUT_PULLUP
+      inverted: true
+    filters:
+      - delayed_on_off: 100ms
 
 sensor:
   - platform: template
     name: "${friendly_name} - Total gas"
     id: total_gas
-    unit_of_measurement: 'm3'
-    icon: mdi:water-boiler
-    accuracy_decimals: 3
+    unit_of_measurement: 'm³'
     device_class: gas
+    state_class: total_increasing
+    icon: mdi:water-boiler
+    accuracy_decimals: 2
     filters:
       - throttle: ${gas_total_interval}
       - multiply: ${gas_pulse_rate}
