@@ -1,0 +1,114 @@
+substitutions:
+  device_name: led-controller
+  friendly_name: H801 LED controller
+  device_description: "H810 LED controller"
+  led_status: GPIO5
+  
+esphome:
+  name: '${device_name}'
+  comment: '${device_description}'
+  platform: ESP8266
+  board: esp01_1m
+
+# Enable Home Assistant API
+api:
+  password: !secret esphome_api_password
+  
+logger:
+  level: WARN
+
+ota:
+  safe_mode: true
+  reboot_timeout: 10min
+  num_attempts: 5
+  
+web_server:
+  port: 80
+  auth:
+    username: !secret esphome_web_username
+    password: !secret esphome_web_password
+
+wifi:
+  ssid: !secret iot_ssid
+  password: !secret iot_pass
+
+  ap:
+    ssid: '${device_name}'
+    password: !secret fallback_password
+
+# Status LED for connection
+status_led:
+  pin:
+    number: ${led_status}
+    inverted: true
+    
+switch:
+  - platform: restart
+    id: restart_switch
+    name: "${friendly_name} - Restart"
+
+light:
+  - platform: rgbww
+    name: "Livingroom Lights"
+    red: output_r
+    green: output_g
+    blue: output_b
+    cold_white: output_cw
+    warm_white: output_ww
+    #cold_white_color_temperature: 6500 K
+    #warm_white_color_temperature: 2700 K
+    cold_white_color_temperature: 153.0 mireds
+    warm_white_color_temperature: 370.0 mireds
+    
+    constant_brightness: true
+    color_interlock: true
+    effects:
+      - random:
+          name: "Random Effect 60s"
+          transition_length: 59s
+          update_interval: 60s
+      - random:
+          name: "Random Effect 5s"
+          transition_length: 4s
+          update_interval: 5s
+      - random:
+          name: "Random Effect 2s"
+          transition_length: 1s
+          update_interval: 2s
+      - random:
+          name: "Random Effect 0.5s"
+          transition_length: 0.25s
+          update_interval: 0.5s
+      - pulse:
+      - strobe:
+      - flicker:
+          name: 'Flicker Effect'
+          alpha: 85%
+          intensity: 3.5%
+    
+output:
+  - platform: esp8266_pwm
+    id: output_r
+    pin: GPIO15
+    min_power: 0.0
+    max_power: 1.0
+  - platform: esp8266_pwm
+    id: output_g
+    pin: GPIO13
+    min_power: 0.0
+    max_power: 1.0
+  - platform: esp8266_pwm
+    id: output_b
+    pin: GPIO12
+    min_power: 0.0
+    max_power: 1.0
+  - platform: esp8266_pwm
+    id: output_cw
+    pin: GPIO14
+    min_power: 0.0
+    max_power: 1.0
+  - platform: esp8266_pwm
+    id: output_ww
+    pin: GPIO4
+    min_power: 0.0
+    max_power: 1.0
