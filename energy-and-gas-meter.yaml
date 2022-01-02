@@ -111,7 +111,8 @@ binary_sensor:
       mode: INPUT_PULLUP
       inverted: true
     filters:
-      - delayed_on_off: 5s
+      - delayed_on: 0.5s
+      - delayed_off: 5s
     on_press:
       then:
         - lambda: !lambda |-
