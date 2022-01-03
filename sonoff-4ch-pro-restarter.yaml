@@ -1,12 +1,13 @@
 substitutions:
-  device_name: sonoff-4chpro-restarter
-  friendly_name: Sonoff 4CH Pro with Restarter
-  device_description: "Sonoff 4CH Pro with Restarter"
+  device_name: sonoff-4chpro
+  friendly_name: Sonoff 4CH Pro
+  device_description: "Sonoff 4CH Pro"
   led_status: GPIO13
   
-  http_url: "http://worldtimeapi.org/api/timezone/Europe/Copenhagen" # Url to check if connection is up
+  http_url: "http://worldtimeapi.org/api/timezone/Europe/Copenhagen" # Url to check if connection is up, can only be HTTP, not HTTPS
   http_get_failed: "3" # How many times to allow the get url to fail
-  http_get_mins: /2 # How often to check if it is possible to get the url
+  http_get_mins: /2 # How often to check if it is possible to get the url, using cron every minute
+  http_get_timeout: 3s # How long to wait before the http get times out
   
 esphome:
   name: '${device_name}'
@@ -55,13 +56,12 @@ globals:
     
 http_request:
   useragent: esphome/device
-  timeout: 2s
-  esp8266_disable_ssl_support: true
+  timeout: ${http_get_timeout}
+  esp8266_disable_ssl_support: true # Must be disabled on an ESP8266
   
 time:
   - platform: sntp
     on_time:
-      # Every 5 minutes
       - seconds: 0
         minutes: ${http_get_mins}
         then:
@@ -79,11 +79,11 @@ time:
                       else
                       {
                         id(http_failed)++;
-                      }
-                      if (id(http_failed) >= int(${http_get_failed}))
-                      {
-                        id(http_failed) = 0;
-                        id(relay1).turn_on();
+                        if (id(http_failed) >= int(${http_get_failed}))
+                        {
+                          id(http_failed) = 0;
+                          id(relay1).turn_on();
+                        }
                       }
                       id(total_http_failed).publish_state(id(http_failed));
 
