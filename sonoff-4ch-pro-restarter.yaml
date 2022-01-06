@@ -4,17 +4,18 @@ substitutions:
   device_description: "Sonoff 4CH Pro"
   led_status: GPIO13
   
-  http_url: "http://worldtimeapi.org/api/timezone/Europe/Copenhagen" # Url to check if connection is up, can only be HTTP, not HTTPS
+  http_url: "http://google.com" # Url to check if connection is up, can only be HTTP, not HTTPS
+  #http_url: "http://worldtimeapi.org/api/timezone/Europe/Copenhagen" # Url to check if connection is up, can only be HTTP, not HTTPS
   http_get_failed: "3" # How many times to allow the get url to fail
-  http_get_mins: /2 # How often to check if it is possible to get the url, using cron every minute
-  http_get_timeout: 3s # How long to wait before the http get times out
+  http_get_time: 60s # How often to check if it is possible to get the url
+  http_get_timeout: 5s # How long to wait before the http get times out
   
 esphome:
   name: '${device_name}'
   comment: '${device_description}'
   platform: ESP8266
   board: esp01_1m
-
+          
 # Enable Home Assistant API
 api:
   password: !secret esphome_api_password
@@ -47,6 +48,30 @@ status_led:
     number: ${led_status}
     inverted: false
     
+interval:
+  - interval: 1min
+    then:
+      - http_request.get:
+          url: ${http_url}
+          headers:
+            Content-Type: application/json
+          verify_ssl: false
+          on_response:
+            then:
+              lambda: !lambda |-
+                  if (status_code == 200) {
+                    id(http_failed) = 0;
+                  }
+                  else
+                  {
+                    id(http_failed)++;
+                    if (id(http_failed) >= int(${http_get_failed}))
+                    {
+                      id(http_failed) = 0;
+                      id(relay1).turn_on();
+                    }
+                  }
+                  id(total_http_failed).publish_state(id(http_failed));
     
 globals:
   - id: http_failed
@@ -59,34 +84,6 @@ http_request:
   timeout: ${http_get_timeout}
   esp8266_disable_ssl_support: true # Must be disabled on an ESP8266
   
-time:
-  - platform: sntp
-    on_time:
-      - seconds: 0
-        minutes: ${http_get_mins}
-        then:
-          - http_request.get:
-              url: ${http_url}
-              headers:
-                Content-Type: application/json
-              verify_ssl: false
-              on_response:
-                then:
-                  lambda: !lambda |-
-                      if (status_code == 200) {
-                        id(http_failed) = 0;
-                      }
-                      else
-                      {
-                        id(http_failed)++;
-                        if (id(http_failed) >= int(${http_get_failed}))
-                        {
-                          id(http_failed) = 0;
-                          id(relay1).turn_on();
-                        }
-                      }
-                      id(total_http_failed).publish_state(id(http_failed));
-
 sensor:
   - platform: wifi_signal
     name: "${friendly_name} - WiFi Signal"
