@@ -1,0 +1,125 @@
+substitutions:
+  device_name: sonoff-switch-bugzapper
+  friendly_name: "Bugzapper"
+  device_description: "Unhealthy place for bugs"
+  led_status: GPIO13
+  interval: 300s
+  
+esphome:
+  name: '${device_name}'
+  comment: '${device_description}'
+  platform: ESP8266
+  board: esp01_1m
+
+# Enable Home Assistant API
+api:
+  password: !secret esphome_api_password
+  
+logger:
+  level: DEBUG
+
+ota:
+  safe_mode: true
+  reboot_timeout: 10min
+  num_attempts: 5
+  
+web_server:
+  port: 80
+  auth:
+    username: !secret esphome_web_username
+    password: !secret esphome_web_password
+
+wifi:
+  ssid: !secret iot_ssid
+  password: !secret iot_pass
+
+  ap:
+    ssid: '${device_name}'
+    password: !secret fallback_password
+
+# Status LED for connection
+status_led:
+  pin:
+    number: ${led_status}
+    inverted: false
+
+# Sensors for ESP version and WIFI information
+text_sensor:
+  - platform: version
+    hide_timestamp: true
+    name: "${friendly_name} - ESPHome Version"
+  - platform: wifi_info
+    ip_address:
+      name: "${friendly_name} - IP Address"
+      icon: mdi:wifi
+    ssid:
+      name: "${friendly_name} - Connected SSID"
+      icon: mdi:wifi-strength-2
+      
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO0
+      mode: INPUT_PULLUP
+      inverted: true
+    name: "${friendly_name} - Button 1"
+    on_press:
+      - switch.toggle: relay1
+    
+switch:
+  - platform: gpio
+    name: "${friendly_name} - Relay 1"
+    pin: GPIO12
+    id: relay1
+    
+sensor:
+  - platform: dht
+    model: DHT22
+    pin: GPIO14
+    update_interval: 10s
+    temperature:
+      name: "${friendly_name} - Temperature"
+      id: "temperature"
+      accuracy_decimals: 2
+      filters:
+        - throttle_average: ${interval}
+        #- delta: 0.25
+    humidity:
+      name: "${friendly_name} - Humidity"
+      id: "humidity"
+      accuracy_decimals: 1
+      filters:
+        - throttle_average: ${interval}
+        #- delta: 0.25
+        
+  - platform: template
+    name: "${friendly_name} - Apparent Temperature"
+    accuracy_decimals: 2
+    unit_of_measurement: '°C'
+    filters:
+      - throttle_average: ${interval}
+      - lambda: |-
+          float T = id(temperature).state * 9/5 + 32; // Convert C to F
+          float RH = id(humidity).state;
+          float HI = 0;
+          if(T <= 40.0)
+          {
+            HI = T;
+          }
+          else
+          {
+            HI = -42.379 + 2.04901523*T + 10.14333127*RH - 0.22475541*T*RH - 0.00683783*T*T - 0.05481717*RH*RH + 0.00122874*T*T*RH + 0.00085282*T*RH*RH - 0.00000199*T*T*RH*RH;
+            if (RH < 13 && T >= 80 && T <= 112)
+            {
+              HI -= ((13-RH)/4) * sqrt(17-abs(T-95)/17);
+            }
+            else if (RH > 85 && T >= 80 && T <= 87)
+            {
+              HI += ((RH-85)/10) * ((87-T)/5);
+            }
+            else if (T < 80)
+            {
+              HI = 0.5 * (T + 61.0 + ((T-68.0)*1.2) + (RH*0.094));
+            }
+          }
+          return (HI - 32) * 5/9; // Convert F into C
