@@ -1,0 +1,154 @@
+substitutions:
+  fan_low: D5
+  fan_high: D6
+  compressor: D7
+  status_led: D2
+  friendly_name: "Aircondition"
+  
+  internal_switches: "true"
+
+esphome:
+  name: ac
+  comment: 'Create cold'
+
+esp8266:
+  board: d1_mini_pro
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+
+web_server:
+  port: 80
+
+ota:
+
+wifi:
+  ssid: "no"
+  password: "noooooooo"
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "AC Fallback Hotspot"
+    #password: ""
+    ap_timeout: 10s
+
+captive_portal:
+
+status_led:
+  pin:
+    number: ${status_led}
+    inverted: true
+
+interval:
+  - interval: 1s
+    then:
+      if:
+        condition:
+          - switch.is_on: compressor
+        then:
+          if:
+            condition:
+              and:
+                - switch.is_off: fan_high
+                - switch.is_off: fan_low
+            then:
+              - switch.turn_on: fan_low
+              
+  - interval: 5s
+    then:
+      lambda: !lambda |-
+          if(id(acthermostat).mode != CLIMATE_MODE_OFF)
+          {
+            if ( id(acthermostat).current_temperature > ( id(acthermostat).target_temperature + 1 ) )
+            {
+              id(fan_low).turn_off();
+              id(fan_high).turn_on();
+            }
+            else
+            {
+              id(fan_high).turn_off();
+              id(fan_low).turn_on();
+            }
+          }
+              
+switch:
+  - platform: gpio
+    internal: ${internal_switches}
+    name: "${friendly_name} - Fan LOW"
+    pin: ${fan_low}
+    id: fan_low
+    restore_mode: ALWAYS_OFF
+    interlock: &interlock [fan_low, fan_high]
+      
+  - platform: gpio
+    internal: ${internal_switches}
+    name: "${friendly_name} - Fan HIGH"
+    pin: ${fan_high}
+    id: fan_high
+    restore_mode: ALWAYS_OFF
+    interlock: *interlock
+      
+  - platform: gpio
+    internal: ${internal_switches}
+    name: "${friendly_name} - Compressor"
+    pin: ${compressor}
+    id: compressor
+    restore_mode: ALWAYS_OFF
+
+
+sensor:
+  - platform: homeassistant
+    id: ha_temperature
+    entity_id: sensor.workroom_sonoff_4ch_temperature_2
+    
+    
+climate:
+  - platform: thermostat
+    id: acthermostat
+    name: "${friendly_name} - Thermostat"
+    default_mode: "off"
+    sensor: ha_temperature
+    
+    default_target_temperature_high: 23 °C
+    
+    cool_deadband: 0.05 °C # The minimum temperature differential (temperature above the set point) before engaging cooling
+    cool_overrun: 0.05 °C # The minimum temperature differential (cooling beyond the set point) before disengaging cooling
+    
+    visual:
+      min_temperature: 20 °C
+      max_temperature: 35 °C
+      temperature_step: 0.5 °C
+
+    min_cooling_off_time: 120s
+    min_cooling_run_time: 300s
+
+    fan_with_cooling: true # This is useful for forced-air systems where the fan typically runs with cooling.
+    
+    fan_only_cooling: false
+    min_fanning_off_time: 1s
+    min_fanning_run_time: 1s
+    
+    min_idle_time: 1s
+
+    idle_action:
+      - switch.turn_off: compressor
+    
+    off_mode:
+      - switch.turn_off: fan_high
+      - switch.turn_off: fan_low
+      - switch.turn_off: compressor
+      
+    fan_only_action:
+      if:
+        condition:
+          and:
+            - switch.is_off: fan_high
+            - switch.is_off: fan_low
+        then:
+          - switch.turn_on: fan_low
+      
+    cool_action:
+      - switch.turn_on: compressor
