@@ -26,8 +26,11 @@ web_server:
 ota:
 
 wifi:
-  ssid: "no"
-  password: "noooooooo"
+  ssid: !secret iot_ssid
+  password: !secret iot_pass
+  
+  #ssid: "no"
+  #password: "noooooooo"
 
   # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
@@ -73,6 +76,39 @@ interval:
               id(fan_low).turn_on();
             }
           }
+          
+  - interval: 36s
+    then:
+      - lambda: !lambda |-
+      
+            id(power_watt) = 0.0;
+            
+            id(power_consumed) += (1.6 * 0.01) / 1000; // 1.6w
+            id(power_watt) += 1.6;
+      
+      
+            if(id(fan_low).state)
+            {
+              id(power_consumed) += (47 * 0.01) / 1000; // 47w
+              id(power_watt) += 47;
+            }
+            
+            if(id(fan_high).state)
+            {
+              id(power_consumed) += (53 * 0.01) / 1000; // 53w
+              id(power_watt) += 53;
+            }
+            
+            if(id(compressor).state)
+            {
+              id(power_consumed) += (670 * 0.01) / 1000; // 670w
+              id(power_watt) += 670;
+            }
+
+            id(total_power).publish_state(id(power_consumed));
+            
+            id(watt).publish_state(id(power_watt));
+            
               
 switch:
   - platform: gpio
@@ -98,12 +134,45 @@ switch:
     id: compressor
     restore_mode: ALWAYS_OFF
 
+globals:
+  - id: power_consumed
+    type: float
+    restore_value: no
+    initial_value: '0'
+    
+  - id: power_watt
+    type: float
+    restore_value: no
+    initial_value: '0'
 
 sensor:
   - platform: homeassistant
     id: ha_temperature
     entity_id: sensor.workroom_sonoff_4ch_temperature_2
     
+  - platform: template
+    name: "${friendly_name} - Total energy"
+    id: total_power
+    unit_of_measurement: 'kWh'
+    device_class: energy
+    state_class: total_increasing
+    icon: mdi:home-lightning-bolt-outline
+    accuracy_decimals: 3
+    lambda: return id(power_consumed);
+    filters:
+      delta: 0.001
+      
+  - platform: template
+    name: "${friendly_name} - Estimated power consumption"
+    id: watt
+    unit_of_measurement: 'W'
+    state_class: measurement
+    device_class: power
+    icon: mdi:flash-outline
+    accuracy_decimals: 0
+    lambda: return id(power_watt);
+    filters:
+      delta: 1.0
     
 climate:
   - platform: thermostat
