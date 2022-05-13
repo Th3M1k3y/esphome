@@ -1,0 +1,179 @@
+substitutions:
+  # General variables
+  device_name: heatpump-power-monitor
+  friendly_name: "Heatpump Power Monitor"
+  device_description: "Modbus power monitor"
+  led_status: GPIO2 # LED output for ESPHome status
+  modbus_tx: GPIO18
+  modbus_rx: GPIO19
+  
+esphome:
+  name: "${device_name}"
+  comment: "${device_description}"
+  platform: ESP32
+  board: nodemcu-32s
+
+wifi:
+  ssid: !secret iot_ssid
+  password: !secret iot_pass
+
+  ap:
+    ssid: "${device_name}"
+    password: !secret fallback_password
+
+captive_portal:
+
+# Enable logging
+logger:
+  level: WARN
+  baud_rate: 0
+
+# Enable Home Assistant API
+api:
+  password: !secret esphome_api_password
+
+ota:
+  safe_mode: true
+  reboot_timeout: 10min
+  num_attempts: 5
+  password: !secret esphome_ota_password
+
+web_server:
+  port: 80
+  auth:
+    username: !secret esphome_web_username
+    password: !secret esphome_web_password
+
+status_led:
+  pin:
+    number: ${led_status}
+    inverted: false
+    
+uart:
+  id: mod_bus
+  tx_pin: ${modbus_tx}
+  rx_pin: ${modbus_rx}
+  baud_rate: 9600
+  stop_bits: 1
+
+modbus:
+  id: modbus1
+
+modbus_controller:
+  - id: modbus_dining_room # Carlo Gavazzi EM111DINAV81XS1PFB
+    address: 0x1
+    modbus_id: modbus1
+    setup_priority: -10
+    
+    command_throttle: 100ms
+    update_interval: 2s
+
+sensor:
+  - platform: modbus_controller
+    name: "${friendly_name} - Dining room - Voltage"
+    internal: true
+    modbus_controller_id: modbus_dining_room
+    id: em111_v
+    register_type: holding
+    address: 0x0
+    unit_of_measurement: "V"
+    device_class: "voltage"
+    state_class: "measurement"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+      - or:
+        - delta: 0.5
+        - throttle_average: 600s
+    value_type: U_WORD
+    
+  - platform: modbus_controller
+    name: "${friendly_name} - Dining room - Ampere"
+    internal: true
+    modbus_controller_id: modbus_dining_room
+    id: em111_a
+    register_type: holding
+    address: 0x0100
+    unit_of_measurement: "A"
+    device_class: "current"
+    state_class: "measurement"
+    accuracy_decimals: 3
+    filters:
+      - multiply: 0.001
+      - or:
+        - delta: 0.25
+        - throttle: 120s
+    value_type: U_WORD
+    
+  - platform: modbus_controller
+    name: "${friendly_name} - Dining room - Watts"
+    modbus_controller_id: modbus_dining_room
+    id: em111_w
+    register_type: holding
+    address: 0x0004
+    unit_of_measurement: "W"
+    device_class: "power"
+    state_class: "measurement"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+      - throttle: 6s # 6 second throttle + 600 samples = 1 hour
+      - sliding_window_moving_average:
+          window_size: 600
+          send_every: 10
+      - or:
+        - delta: 0.1
+        - throttle: 600s
+    value_type: U_WORD
+
+  - platform: modbus_controller
+    name: "${friendly_name} - Dining room - Power Factor"
+    internal: true
+    modbus_controller_id: modbus_dining_room
+    id: em111_pf
+    register_type: read
+    address: 0x000E
+    unit_of_measurement: "Pf"
+    device_class: "power_factor"
+    state_class: "measurement"
+    accuracy_decimals: 3
+    filters:
+      - multiply: 0.001
+      - or:
+        - throttle_average: 600s
+        - delta: 0.025
+    value_type: U_WORD
+
+  - platform: modbus_controller
+    name: "${friendly_name} - Dining room - Frequency"
+    internal: true
+    modbus_controller_id: modbus_dining_room
+    id: em111_hz
+    register_type: read
+    address: 0x000F
+    unit_of_measurement: "Hz"
+    #device_class: "frequency"
+    state_class: "measurement"
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+      - delta: 0.1
+    value_type: U_WORD
+    
+  - platform: modbus_controller
+    name: "${friendly_name} - Dining room - kWh"
+    modbus_controller_id: modbus_dining_room
+    id: em111_kwh
+    register_type: read
+    address: 0x0500
+    unit_of_measurement: "kWh"
+    device_class: "energy"
+    state_class: "total_increasing"
+    accuracy_decimals: 3
+    filters:
+      - multiply: 0.001
+      - or:
+        - delta: 0.005
+        - throttle: 600s
+        
+    value_type: U_WORD
