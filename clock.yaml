@@ -1,0 +1,119 @@
+substitutions:
+  # General variables
+  device_name: clock
+  friendly_name: 'Wall clock'
+  device_description: "LED ring clock"
+  led_status: GPIO2 # LED output for ESPHome status
+  
+
+esphome:
+  name: '${device_name}'
+  comment: '${device_description}'
+  platform: ESP32
+  board: nodemcu-32s
+
+
+wifi:
+  ssid: !secret iot_ssid
+  password: !secret iot_pass
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: '${device_name}'
+    password: !secret fallback_password
+
+captive_portal:
+
+# Enable logging
+logger:
+  level: DEBUG
+
+# Enable Home Assistant API
+api:
+  password: !secret esphome_api_password
+
+ota:
+  safe_mode: true
+  reboot_timeout: 10min
+  num_attempts: 5
+  password: !secret esphome_ota_password
+
+web_server:
+  port: 80
+  auth:
+    username: !secret esphome_web_username
+    password: !secret esphome_web_password
+    
+time:
+  - platform: sntp
+    id: sntp_time
+    
+light:
+  - platform: neopixelbus
+    type: GRBW
+    id: light1
+    variant: WS2812X
+    pin: GPIO16
+    num_leds: 60
+    name: "LED ring"
+    effects:
+      - addressable_lambda:
+          name: "Clock"
+          update_interval: 1000ms
+          lambda: |-
+            auto time = id(sntp_time).now();
+            
+            it.all() = Color::BLACK;
+            
+            if (time.is_valid())
+            {
+              Color ledcolor_hour = Color(120, 0, 0);
+              Color ledcolor_minute = Color(0, 100, 0);
+              Color ledcolor_second = Color(0, 0, 127);
+              
+              int ledr = ledcolor_hour.r;
+            
+              int8_t time_hour = time.hour;
+              
+              if(time_hour >= 12)
+              {
+                time_hour -= 12;
+              }
+              
+              it[0] = Color(0, 0, 0, 50);
+              it[15] = Color(0, 0, 0, 50);
+              it[30] = Color(0, 0, 0, 50);
+              it[45] = Color(0, 0, 0, 50);
+              
+              time_hour = time_hour * 5;
+              
+              for (int i = time_hour-2; i <= time_hour+2; i++)
+              {
+                int num = i;
+                if(num > 59) num=num-60;
+                if(num < 0) num=60-abs(num);
+                it[num] = ledcolor_hour;
+              }
+              
+              for (int i = time.minute-1; i <= time.minute+1; i++)
+              {
+                int num = i;
+                if(num > 59) num=num-60;
+                if(num < 0) num=60-abs(num);
+                it[num] = ledcolor_minute;
+              }
+              
+              it[time.second] = ledcolor_second;
+            }
+            
+      - addressable_fireworks:
+          name: Fireworks Effect With Custom Values
+          update_interval: 32ms
+          spark_probability: 10%
+          use_random_color: false
+          fade_out_rate: 120
+          
+      - addressable_random_twinkle:
+          name: Random Twinkle Effect With Custom Values
+          twinkle_probability: 5%
+          progress_interval: 32ms
