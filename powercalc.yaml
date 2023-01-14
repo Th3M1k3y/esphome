@@ -1,0 +1,101 @@
+esphome:
+  name: powercalc
+  comment: 'Calculate cost of power over time'
+
+esp32:
+  board: nodemcu-32s
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  level: WARN
+  baud_rate: 0
+
+# Enable Home Assistant API
+api:
+  password: !secret esphome_api_password
+
+ota:
+  password: !secret esphome_ota_password
+
+web_server:
+  port: 80
+  auth:
+    username: !secret esphome_web_username
+    password: !secret esphome_web_password
+
+wifi:
+  ssid: !secret iot_ssid
+  password: !secret iot_pass
+
+  ap:
+    ssid: "Power Calculator"
+    password: !secret fallback_password
+
+captive_portal:
+    
+globals:
+  - id: power_consumed
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+    
+  - id: cost_total
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+
+interval:
+  - interval: 3.6s # 3.6 to make it easy divisible with 3600 seconds pr hour
+    then:
+      - lambda: !lambda |-
+            float c_watt = id(watt).state; // Current wattage
+            float c_kwh = c_watt * 0.000001; // Calculate amount of kWh consumed this cycle
+
+            if (c_kwh > 0.0)
+            {
+              if (!isnan(id(utility_price_kwh).state))
+              {
+                float calc_cost = id(utility_price_kwh).state * c_kwh;
+                id(cost_total) += calc_cost;
+                id(cost).publish_state(id(cost_total));
+              }
+              else
+              {
+                ESP_LOGE("utility_price_kwh", "Is NaN");
+              }
+              id(power_consumed) += c_kwh;
+              id(total_power).publish_state(id(power_consumed));
+            }
+      
+sensor:
+  - platform: homeassistant
+    id: utility_price_kwh
+    state_class: measurement
+    unit_of_measurement: DKK
+    entity_id: sensor.nodered_ad4d1d8fc90c6fcb # entity with current ${currency}/kWh
+
+  - platform: template # Template sensor for demonstration purposes
+    name: "Power"
+    id: watt
+    unit_of_measurement: 'W'
+    state_class: measurement
+    device_class: power
+    lambda: 'return 1000;'
+
+  - platform: template
+    name: "Total energy"
+    id: total_power
+    unit_of_measurement: 'kWh'
+    device_class: energy
+    state_class: total_increasing
+    accuracy_decimals: 3
+
+  - platform: template
+    name: "Estimated cost"
+    id: cost
+    unit_of_measurement: 'DKK'
+    state_class: total_increasing
+    device_class: monetary
+    accuracy_decimals: 2
