@@ -45,6 +45,16 @@ globals:
     type: float
     restore_value: no
     initial_value: '0.0'
+    
+  - id: cost_total_kwh
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+
+  - id: cost_last_kwh
+    type: float
+    restore_value: no
+    initial_value: '0.0'
 
 interval:
   - interval: 3.6s # 3.6 to make it easy divisible with 3600 seconds pr hour
@@ -68,6 +78,27 @@ interval:
               id(power_consumed) += c_kwh;
               id(total_power).publish_state(id(power_consumed));
             }
+            
+  - interval: 60s
+    then:
+      - lambda: !lambda |-
+            float total_power_state = id(total_power).state;
+            if (total_power_state > id(cost_last_kwh))
+            {
+              if (!isnan(id(utility_price_kwh).state))
+              {
+                float diff_kwh = total_power_state - id(cost_last_kwh);
+                float calc_cost = id(utility_price_kwh).state * diff_kwh;
+
+                id(cost_total_kwh) += calc_cost;
+                id(cost_kwh).publish_state(id(cost_total_kwh));
+              }
+              else
+              {
+                ESP_LOGE("utility_price_kwh", "Is NaN");
+              }
+            }
+            id(cost_last_kwh) = total_power_state;
       
 sensor:
   - platform: homeassistant
@@ -95,6 +126,14 @@ sensor:
   - platform: template
     name: "Estimated cost"
     id: cost
+    unit_of_measurement: 'DKK'
+    state_class: total_increasing
+    device_class: monetary
+    accuracy_decimals: 2
+
+  - platform: template
+    name: "Estimated cost (kWh)"
+    id: cost_kwh
     unit_of_measurement: 'DKK'
     state_class: total_increasing
     device_class: monetary
