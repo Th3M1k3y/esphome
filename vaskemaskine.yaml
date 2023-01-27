@@ -1,0 +1,204 @@
+substitutions:
+  device_name: vaskemaskine
+  friendly_name: Vaskemaskine
+  device_description: "Calculating cost"
+  led_status: GPIO15
+  relay_pin: GPIO12
+
+esphome:
+  name: '${device_name}'
+  comment: '${device_description}'
+  platform: ESP8266
+  board: esp01_1m
+
+wifi:
+  ssid: !secret iot_ssid
+  password: !secret iot_pass
+
+  ap:
+    ssid: '${device_name}'
+    password: !secret fallback_password
+
+captive_portal:
+
+# Enable logging
+logger:
+  level: WARN
+
+# Enable Home Assistant API
+api:
+  password: !secret esphome_api_password
+
+ota:
+  safe_mode: true
+  reboot_timeout: 10min
+  num_attempts: 5
+
+web_server:
+  port: 80
+  auth:
+    username: !secret esphome_web_username
+    password: !secret esphome_web_password
+
+# Status LED for connection
+status_led:
+  pin:
+    number: ${led_status}
+    inverted: true
+
+interval:
+  - interval: 60s
+    then:
+      - lambda: !lambda |-
+            float total_power_state = id(kwh).state;
+            if (total_power_state > id(kwh_cost_last) && id(machine_running).state)
+            {
+              if (!isnan(id(utility_price_kwh).state))
+              {
+                float diff_kwh = total_power_state - id(kwh_cost_last);
+                float calc_cost = id(utility_price_kwh).state * diff_kwh;
+
+                id(cost_total) += calc_cost;
+              }
+              else
+              {
+                ESP_LOGE("utility_price_kwh", "Is NaN");
+              }
+            }
+            id(cost_kwh).publish_state(id(cost_total));
+            id(kwh_cost_last) = total_power_state;
+
+sensor:
+  - platform: homeassistant
+    id: utility_price_kwh
+    state_class: measurement
+    unit_of_measurement: DKK
+    entity_id: sensor.energi_data_service # entity with current ${currency}/kWh
+
+  - platform: template
+    name: "${friendly_name} Cost"
+    id: cost_kwh
+    unit_of_measurement: 'DKK'
+    state_class: total_increasing
+    device_class: monetary
+    accuracy_decimals: 2
+
+
+  - platform: hlw8012
+    sel_pin: GPIO5
+    cf_pin: GPIO14
+    cf1_pin: GPIO13
+    current_resistor: 0.000875 # readout / Calculation (hlw8012 reading/actual load) * current_res
+    voltage_divider: 2520 # readout / Calculation (mains voltage/hlw8012 reading) * voltage_div
+    current:
+      name: '${friendly_name} Current'
+      accuracy_decimals: 3
+      internal: true
+      filters:
+        - throttle_average: 60s
+    voltage:
+      name: '${friendly_name} Voltage'
+      accuracy_decimals: 0
+      internal: true
+      filters:
+        - throttle_average: 60s
+    power:
+      name: '${friendly_name} Power'
+      id: power
+      accuracy_decimals: 1
+      filters:
+        - sliding_window_moving_average:
+            window_size: 12
+            send_every: 1
+        - delta: 2
+        - throttle: 5s
+        - lambda: !lambda |-
+            if (x < 0) {
+              return 0;
+            } else {
+              return x;
+            }
+    energy:
+      name: '${friendly_name} Energy'
+      accuracy_decimals: 3
+      id: kwh
+      unit_of_measurement: "kWh"
+      device_class: "energy"
+      state_class: "total_increasing"
+      filters:
+        - delta: 0.01
+        - throttle: 60s
+        - multiply: 0.001
+    update_interval: 5s
+    #initial_mode: CURRENT
+    #change_mode_every: 64
+    
+globals:
+  - id: kwh_start # Hold the value from when washing machine started
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+
+  - id: kwh_cost_last # Hold the value from last time power cost was calculated
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+
+  - id: cost_total # Hold the total cost of power used
+    type: float
+    restore_value: no
+    initial_value: '-0.001'
+    
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO0
+      mode: INPUT_PULLUP
+      inverted: True
+    name: '${friendly_name} Button'
+    internal: true
+    on_press:
+      - switch.toggle: relay
+
+  - platform: template
+    name: '${friendly_name} Washing'
+    id: machine_running
+    filters:
+      - delayed_on: 30s
+      - delayed_off: 30s
+    lambda: |-
+      if (id(power).state > 4) # Wash cycle is running if over 4w
+      {
+        return true;
+      }
+      return false;
+      
+    on_press:
+      - lambda: |-
+          id(kwh_start) = id(kwh).state;
+          id(cost_total) = 0.0; // Zero cost counter
+
+    on_release:
+      then:
+        - if:
+            condition:
+              - lambda: 'return id(cost_total) > 0;'
+            then:
+            - homeassistant.service:
+                service: notify.notify
+                data:
+                  title: Vaskemaskine
+                data_template:
+                  message: 'Vask er færdig, brugte {{used_kwh}}kWh, som kostede {{used_dkk}}kr.'
+                variables:
+                  used_kwh: |-
+                    return str_sprintf("%.3f", id(kwh).state - id(kwh_start));
+                  used_dkk: |-
+                    return str_sprintf("%.2f", id(cost_total));
+    
+switch:
+  - platform: gpio
+    name: '${friendly_name} Relay'
+    id: relay
+    pin: ${relay_pin}
+    restore_mode: RESTORE_DEFAULT_OFF
