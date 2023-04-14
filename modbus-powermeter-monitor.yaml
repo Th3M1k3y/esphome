@@ -85,7 +85,7 @@ sensor:
       - or:
         - delta: 0.5
         - throttle_average: 600s
-    value_type: U_WORD
+    value_type: S_DWORD_R
     
   - platform: modbus_controller
     name: "${friendly_name} - Dining room - Ampere"
@@ -103,7 +103,7 @@ sensor:
       - or:
         - delta: 0.25
         - throttle: 120s
-    value_type: U_WORD
+    value_type: S_DWORD_R
     
   - platform: modbus_controller
     name: "${friendly_name} - Dining room - Watts"
@@ -124,7 +124,7 @@ sensor:
       - or:
         - delta: 0.1
         - throttle: 600s
-    value_type: U_WORD
+    value_type: S_DWORD_R
 
   - platform: modbus_controller
     name: "${friendly_name} - Dining room - Power Factor"
@@ -142,7 +142,7 @@ sensor:
       - or:
         - throttle_average: 600s
         - delta: 0.025
-    value_type: U_WORD
+    value_type: S_WORD
 
   - platform: modbus_controller
     name: "${friendly_name} - Dining room - Frequency"
@@ -158,7 +158,7 @@ sensor:
     filters:
       - multiply: 0.1
       - delta: 0.1
-    value_type: U_WORD
+    value_type: S_WORD
     
   - platform: modbus_controller
     name: "${friendly_name} - Dining room - kWh"
@@ -176,4 +176,4 @@ sensor:
         - delta: 0.005
         - throttle: 600s
         
-    value_type: U_WORD
+    value_type: S_QWORD_R
