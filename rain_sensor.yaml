@@ -1,0 +1,256 @@
+esphome:
+  name: astra-br4d4dl-test
+  friendly_name: Astra BR4D4DL Test
+  on_boot:
+  # buzzeron on startup
+    priority: -100
+    then:
+      #- rtttl.play: 'A-Team:d=8,o=5,b=125:4d#6,a#,2d#6,16p,g#,4a#,4d#.,p,16g,16a#,d#6,a#,f6,2d#6,16p,c#.6,16c6,16a#,g#.,2a#'
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  level: ERROR
+  baud_rate: 0
+
+# Enable Home Assistant API
+api:
+  reboot_timeout: 0s
+  encryption:
+    key: !secret api_encryption
+
+ota:
+- platform: esphome
+  password: !secret esphome_ota_password
+
+wifi:
+  ssid: !secret iot_ssid
+  password: !secret iot_pass
+
+  ap:
+    ssid: 'BR4D4DL'
+    password: !secret fallback_password
+
+captive_portal:
+
+web_server:
+  port: 80
+  auth:
+    username: !secret esphome_web_username
+    password: !secret esphome_web_password
+
+status_led:
+  pin:
+    number: GPIO4
+    inverted: true
+
+output:
+  - platform: ledc
+    pin: GPIO12
+    id: rtttl_out
+
+rtttl:
+  output: rtttl_out
+
+switch:
+  - platform: gpio
+    name: "Relay 1"
+    pin: 25
+    id: relay1
+  - platform: gpio
+    name: "Relay 2"
+    pin: 26
+    id: relay2
+  - platform: gpio
+    name: "Relay 3"
+    pin: 33
+    id: relay3
+  - platform: gpio
+    name: "Relay 4"
+    pin: 32
+    id: relay4
+    
+binary_sensor:
+  - platform: gpio
+    name: "SWITCH 1"
+    pin:
+      number: 34
+      inverted: true
+      mode:
+        input: true
+
+  - platform: gpio
+    name: "SWITCH 2"
+    pin: 
+      number: 35
+      inverted: true
+      mode:
+        input: true
+
+  - platform: gpio
+    name: "SWITCH 3"
+    pin: 
+      number: 36
+      inverted: true
+      mode:
+        input: true
+
+  - platform: gpio
+    name: "SWITCH 4"
+    pin: 
+      number: 39
+      inverted: true
+      mode:
+        input: true
+
+  - platform: modbus_controller
+    name: "Rain status"
+    internal: false
+    modbus_controller_id: modbus_rain
+    register_type: holding
+    address: 0x0
+
+
+uart:
+  id: mod_bus
+  tx_pin: GPIO17
+  rx_pin: GPIO16
+  baud_rate: 4800
+  stop_bits: 1
+
+modbus:
+  id: modbus1
+  #send_wait_time: 200ms
+  #flow_control_pin: ${modbus_fc}
+
+modbus_controller:    
+  - id: modbus_rain
+    address: 0x1
+    modbus_id: modbus1
+    setup_priority: -10
+    
+    command_throttle: 100ms
+    update_interval: 2s
+
+sensor:
+  - platform: modbus_controller
+    name: "Rain sensitivity" # More sensitive 500-3500 less sensitive
+    internal: false
+    modbus_controller_id: modbus_rain
+    id: rain_sensitivity1
+    register_type: read
+    address: 0x0034
+    accuracy_decimals: 0
+    value_type: S_DWORD_R
+    
+  - platform: modbus_controller
+    name: "Rain heat temperature low" # -15-70
+    internal: false
+    modbus_controller_id: modbus_rain
+    id: rain_heat_temp_low
+    register_type: holding
+    address: 0x031
+    accuracy_decimals: 1
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    device_class: "temperature"
+    state_class: "measurement"
+    filters:
+      - multiply: 0.1
+    
+  - platform: modbus_controller
+    name: "Rain heat temperature difference" # 0-70
+    internal: false
+    modbus_controller_id: modbus_rain
+    id: rain_heat_temp_difference
+    register_type: holding
+    address: 0x032
+    accuracy_decimals: 1
+    value_type: U_WORD
+    unit_of_measurement: "°C"
+    device_class: "temperature"
+    state_class: "measurement"
+    filters:
+      - multiply: 0.1
+    
+  - platform: modbus_controller
+    name: "Rain reset delay" #0-60000
+    internal: false
+    modbus_controller_id: modbus_rain
+    id: rain_reset_delay
+    register_type: holding
+    address: 0x033
+    accuracy_decimals: 0
+    unit_of_measurement: "s"
+    value_type: U_WORD
+
+  - platform: modbus_controller
+    name: "Model code" #1-20
+    internal: false
+    modbus_controller_id: modbus_rain
+    register_type: holding
+    address: 0x064
+    value_type: U_DWORD
+
+  - platform: modbus_controller
+    name: "Rain measuring points" #1-20
+    internal: false
+    modbus_controller_id: modbus_rain
+    id: rain_measuring_points
+    register_type: holding
+    address: 0x065
+    #value_type: U_WORD
+
+  - platform: modbus_controller
+    name: "Baud rate" #0-6
+    internal: false
+    modbus_controller_id: modbus_rain
+    register_type: holding
+    address: 0x067
+    value_type: U_WORD
+
+  - platform: modbus_controller
+    name: "Communication mode" #1-4
+    internal: false
+    modbus_controller_id: modbus_rain
+    register_type: holding
+    address: 0x068
+    value_type: U_WORD
+
+  - platform: modbus_controller
+    name: "Protocol type" #1-10
+    internal: false
+    modbus_controller_id: modbus_rain
+    register_type: holding
+    address: 0x069
+    value_type: U_WORD
+    
+    
+number:
+  - platform: modbus_controller
+    modbus_controller_id: modbus_rain
+    id: rain_set_sensitivity
+    name: "Rain set sensitivity"
+    address: 0x0034
+    value_type: S_WORD
+    min_value: 500
+    max_value: 3500
+    mode: box
+    step: 1
+    lambda: "return  x * 1;"
+
+  - platform: modbus_controller
+    name: "Rain reset delay" #0-60000
+    internal: false
+    modbus_controller_id: modbus_rain
+    register_type: holding
+    min_value: 1
+    max_value: 600
+    mode: box
+    address: 0x033
+    unit_of_measurement: "s"
+    value_type: U_WORD
